@@ -155,30 +155,59 @@ def api_screener(market: str = "cn", filters: Dict = None) -> Dict[str, Any]:
 def api_market_status(symbol: str = None) -> Dict[str, Any]:
     """
     Finnhub-equivalent: /market/status
-    返回市场状态（开盘/收盘/盘前/盘后）
+    返回市场状态（开盘/收盘/盘前/盘后），支持 A股/港股/美股
     """
     try:
         from datetime import datetime
         now = datetime.now()
         hour = now.hour
+        minute = now.minute
         weekday = now.weekday()
+        current_time = hour + minute / 60
 
-        # A股: 9:30-15:00 UTC+8
-        if weekday >= 5:
-            status = "closed"
-        elif 9 <= hour < 11 or 13 <= hour < 15:
-            status = "open"
-        elif 9 <= hour < 9.3 or 13 <= hour < 13.3:
-            status = "pre_market"
-        elif 15 <= hour < 18:
-            status = "after_hours"
-        else:
-            status = "closed"
+        def cn_status():
+            if weekday >= 5:
+                return "closed_weekend"
+            elif 9.5 <= current_time < 11.5 or 13 <= current_time < 15:
+                return "open"
+            elif 9 <= current_time < 9.5:
+                return "pre_market"
+            elif 15 <= current_time < 18:
+                return "after_hours"
+            else:
+                return "closed"
+
+        def hk_status():
+            if weekday >= 5:
+                return "closed_weekend"
+            elif 9.5 <= current_time < 12 or 13 <= current_time < 16:
+                return "open"
+            elif 9 <= current_time < 9.5:
+                return "pre_market"
+            elif 16 <= current_time < 18:
+                return "after_hours"
+            else:
+                return "closed"
+
+        def us_status():
+            # 美股时间转为北京时间（北京时间-13小时）
+            us_hour = (hour - 13) % 24
+            us_weekday = (weekday - 1) % 7
+            if us_weekday >= 5:
+                return "closed_weekend"
+            elif 9.5 <= us_hour + minute/60 < 16:
+                return "open"
+            elif 4 <= us_hour < 9.5:
+                return "pre_market"
+            elif 16 <= us_hour < 20:
+                return "after_hours"
+            else:
+                return "closed"
 
         result = {
-            "status": status,
-            "session": "A-share",
-            "timezone": "Asia/Shanghai",
+            "cn": {"status": cn_status(), "session": "A-share", "timezone": "Asia/Shanghai"},
+            "hk": {"status": hk_status(), "session": "HKEx", "timezone": "Asia/Shanghai"},
+            "us": {"status": us_status(), "session": "US", "timezone": "America/New_York"},
             "timestamp": now.isoformat()
         }
         return format_response(True, result)
